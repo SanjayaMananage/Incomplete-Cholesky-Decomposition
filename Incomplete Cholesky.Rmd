@@ -1,0 +1,536 @@
+---
+title: "Incomplete Cholesky Decomposition"
+author: "Dona Hasini Gammune & Mananage Sanjaya Kumara"
+output: pdf_document
+header-includes: 
+  - \usepackage{bm}
+urlcolor: blue
+geometry: "top = 1.5cm, bottom = 2cm,left= 1.5cm,right=1.5cm"
+always_allow_html: yes
+---
+
+\centering 
+**Handout**
+
+\newcommand{\bmx}{{\bm x}}
+\newcommand{\bmI}{{\bm I}}
+\newcommand{\bmJ}{{\bm J}}
+\newcommand{\bmH}{{\bm H}}
+\newcommand{\bmQ}{{\bm Q}}
+
+```{R setup, include = FALSE}
+knitr::opts_chunk$set(comment = NA, prompt = TRUE, collapse = TRUE)
+```
+
+
+
+
+
+# Introduction 
+
+\flushleft
+
+-   An **incomplete Cholesky factorization** of a **`Symmetric Positive definite matrix`** is a sparse approximation of the Cholesky factorization. 
+\vspace{0.2cm}
+-   It is a fundamental tool in the solution of large systems of linear equations.
+\vspace{0.2cm}
+-   Let **`A`** be a  **`Symmetric Positive definite matrix`**. 
+An **incomplete Cholesky factorization** of A is such that
+$$A=LL^T+R \text{ , } l_{ij} = 0 \text{ if } (i,j)\not \in S \text{  and }  r_{ij} = 0\text{ if  }(i,j) \in S$$
+where,
+ - $L$ is a **`Lower triangular matrix`**.
+ - $S$ is a **`symmetric sparsity pattern`**.
+ - $R$ is an **`error matrix `** which does not have to be formed.
+ 
+
+\centering
+ 
+# Implementing the Incomplete Cholesky algorithm 
+
+\flushleft
+
+- One popular way to find such a matrix $L$ is to use the algorithm for finding the exact `Cholesky decomposition`, **except that any entry is set to zero if the corresponding entry in $A$ is also zero**. 
+
+## **Algorithm**
+
+\footnotesize
+For $i=1:N$ and $j=1:N$
+
+if($a_{ij}=0$) ,then $L_{ij}=0$
+
+else do the following:
+
+For $i$ from $1$ to $N$:
+$$
+L_{ii}=\left( a_{ii}-\sum_{k=1}^{i-1}L^2_{ik} \right)^{\frac{1}{2}}
+$$
+For $j$ from $i+1$ to $N$:
+
+$$
+L_{ji}=\frac{1}{L_{ii}}\left( a_{ji}-\sum_{k=1}^{i-1}L_{ik}L_{jk} \right)
+$$
+
+\newpage
+
+## **Implementation of the algorithm : In R**
+\footnotesize
+
+```{r, eval=F, echo=T}
+ichol<-function(A){
+  n <-nrow(A)
+    for(k in 1:n){
+    A[k,k]<-sqrt(A[k,k])
+    i<-k+1
+    while(i<=n){
+      if(A[i,k]!=0){
+      A[i,k]<-A[i,k]/A[k,k]
+    }
+     i<-i+1
+   }
+    j<-k+1
+    while(j<=n){
+    for (i in j:n){
+       if(A[i,j]!=0){
+       A[i,j]<-(A[i,j]-A[i,k]*A[j,k])
+      }
+    }
+    j<-j+1
+    }
+  }
+  return(A*lower.tri(A,TRUE))
+}
+```
+
+
+## **Implementation of the algorithm: In Rcpp**
+\footnotesize
+
+```{r eval =FALSE}
+library(Rcpp)
+library(RcppEigen)
+sourceCpp(code = '
+#include <Rcpp.h>
+#include <RcppEigen.h>
+// [[Rcpp::depends(RcppEigen)]]
+using namespace std;
+using namespace Rcpp;
+using namespace Eigen;
+// [[Rcpp::export]]
+  MatrixXd rcpp_ichol(MatrixXd A) {
+  A=A.triangularView<Lower>();
+  int n = A.rows();
+   for(int k=0;k<n;k++){
+   A(k,k)=sqrt(A(k,k));
+    for(int i=k+1;i<n;i++){
+      if(A(i,k)!=0){
+      A(i,k)=A(i,k)/A(k,k);
+      }
+    }
+    for(int j=k+1;j<n;j++){
+      for (int i=j;i<n;i++){
+       if(A(i,j)!=0){
+       A(i,j)=(A(i,j)-A(i,k)*A(j,k));
+      }
+    }
+    }
+   }
+  return A;
+}
+')
+```
+
+\newpage
+
+## **In-built function for Incomplete cholesky factorization cPCG::icc()**
+
+\footnotesize
+```{r, eval=F, echo=T}
+library(cPCG)
+icc(A)
+
+```
+\small
+
+**Arguments:**
+
+- **`A`** - matrix, symmetric and positive definite.
+- Returns a lower triabgular matrix after incomplete Cholesky factorization.
+- Need to check that input matrix A is **`symmetric and positive definite`** before applying the function.
+- Performs incomplete Cholesky factorization on the input matrix A. 
+- The output matrix is used for preconditioning in ` pcgsolve()` if **`"ICC" `**is specified as the preconditioner.
+
+
+
+
+
+
+## **In-built function to solve for x using Incomplete Cholesky factorization: cPCG::pcgsolve()**
+
+- Preconditioned conjugate gradient method for solving system of linear equations **`Ax = b`** , where `A` is symmetric and positive definite, `b` is a column vector.
+
+\footnotesize
+
+```{r, eval=F, echo=T}
+library(cPCG)
+pcgsolve(A, b, preconditioner = ..., tol = ..., maxIter = ...)
+```
+\small
+
+**Arguments:**
+
+- **`A`** - matrix, symmetric and positive definite.
+- **`b`** - vector, with same dimension as number of rows of **`A`**.
+- **`preconditioner`** - string, method for preconditioning: `"Jacobi"` (default), `"SSOR"`, or `"ICC"`.
+- **`tol`** - numeric, threshold for convergence, default is `1e-6`.
+- **`maxIter`** - numeric, maximum iteration, default is `1000`.
+
+**Value:**
+
+- Returns a vector representing solution `x`.
+
+\centering
+# Examples
+
+\flushleft
+
+ **Example 1**
+ 
+Let
+$$
+A=
+\begin{bmatrix} 
+2  & -1 & 0 \\ 
+-1 &  2 & -1 \\ 
+0 & -1 & 2 \\
+\end{bmatrix}
+$$
+```{R echo=FALSE, warning=FALSE,message=FALSE}
+### incomplete cholesky in R
+ichol<-function(A){
+  n <-nrow(A)
+    for(k in 1:n){
+    A[k,k]<-sqrt(A[k,k])
+    i<-k+1
+    while(i<=n){
+      if(A[i,k]!=0){
+      A[i,k]<-A[i,k]/A[k,k]
+    }
+     i<-i+1
+   }
+    j<-k+1
+    while(j<=n){
+    for (i in j:n){
+       if(A[i,j]!=0){
+       A[i,j]<-(A[i,j]-A[i,k]*A[j,k])
+      }
+    }
+    j<-j+1
+    }
+  }
+  return(A*lower.tri(A,TRUE))
+}
+
+### incomplete cholesky in Rcpp
+library(Rcpp)
+library(RcppEigen)
+sourceCpp(code = '
+#include <Rcpp.h>
+#include <RcppEigen.h>
+// [[Rcpp::depends(RcppEigen)]]
+using namespace std;
+using namespace Rcpp;
+using namespace Eigen;
+// [[Rcpp::export]]
+  MatrixXd rcpp_ichol(MatrixXd A) {
+  A=A.triangularView<Lower>();
+  int n = A.rows();
+   for(int k=0;k<n;k++){
+   A(k,k)=sqrt(A(k,k));
+    for(int i=k+1;i<n;i++){
+      if(A(i,k)!=0){
+      A(i,k)=A(i,k)/A(k,k);
+      }
+    }
+    
+    for(int j=k+1;j<n;j++){
+      for (int i=j;i<n;i++){
+       if(A(i,j)!=0){
+       A(i,j)=(A(i,j)-A(i,k)*A(j,k));
+      }
+    }
+    }
+   }
+  return A;
+}
+')
+
+A<-matrix(c(2,-1,0,-1,2,-1,0,-1,2),3)
+library(cPCG)
+
+cat("The L matrix is")
+ichol(A)
+```
+This is a lower triangular matrix.
+
+**Error matrix**
+
+- The error matrix $R=A-LL^{\prime}$ is
+
+```{r, echo=TRUE}
+A-ichol(A)%*%t(ichol(A))
+```
+
+- Here the error matrix `R` is almost equal to zero.
+
+\newpage
+
+**Testing the algorithms**
+
+
+\footnotesize
+
+```{r echo=TRUE}
+identical(icc(A),rcpp_ichol(A),as.matrix(ichol(A)))
+```
+- The factorization ($L$ matrix) obtained by the implemented algorithms in R and Rcpp are identical to that obtained by `icc()`.
+
+```{r echo=FALSE}
+T1<-microbenchmark::microbenchmark(icc(A),ichol(A),rcpp_ichol(A))
+```
+
+
+**Example 2: Aplplication in statistics**
+
+\footnotesize
+
+- Consider the `mpg` data from `ggplot2` package.
+```{R  echo=TRUE}
+data(mpg, package = 'ggplot2')
+y<-mpg$hwy
+x<-model.matrix(~cty+class,data = mpg)
+C<-crossprod(x)
+b<-crossprod(x,y)
+head(C)
+```
+
+- The matrix C is a Symmetric positive definite matrix that contains many zeros as it's entries. 
+- Therefore we can use Incomplete Cholesky factorization.
+
+**Incomplete Cholesky factorization of** $C=X^{\prime}X$
+\footnotesize
+```{R  echo=TRUE}
+ichol(C)
+
+```
+
+```{R  echo=TRUE}
+identical(icc(C),rcpp_ichol(C),as.matrix(ichol(C)))
+```
+
+- The factorization ($L$ matrix) obtained by the implemented algorithms in R and Rcpp are identical to that obtained by `icc()`.
+
+```{R  echo=FALSE}
+T2<-microbenchmark::microbenchmark(icc(C),ichol(C),rcpp_ichol(C))
+```
+
+\newpage
+
+**Example 3 : Aplplication in statistics**
+
+\footnotesize
+
+- Consider the `mpg` data from `ggplot2` package.
+```{R  echo=TRUE}
+x1 <- model.matrix(~ cty + class+ displ + drv, data = mpg)
+y<-mpg$hwy
+D<-crossprod(x1)
+b1<-crossprod(x1,y)
+```
+
+- Here we have added one more explanatory variable to the model.
+- The matrix D is still a Symmetric positive definite matrix that contains many zeros as it's entries. 
+- Therefore we can use Incomplete Cholesky factorization.
+
+```{R  echo=TRUE}
+ichol(D)
+identical(icc(D),rcpp_ichol(D),as.matrix(ichol(D)))
+```
+
+- The factorization ($L$ matrix) obtained by the implemented algorithms in R and Rcpp are identical to that obtained by `icc()`.
+
+```{R  echo=FALSE,warning=FALSE}
+T3<-microbenchmark::microbenchmark(icc(D),ichol(D),rcpp_ichol(D))
+```
+
+\newpage
+
+## Speed comparison plot:: The computation of `L` matrix
+
+\footnotesize
+- The `ichol()` function is slow because multiple `for loops` are involved.Therefore here we have compared the speed of `icc()` and `rcpp_ichol()` for different matrix sizes.
+
+```{r echo=FALSE,out.width = "100%"}
+knitr::include_graphics("chol.PNG")
+#fig.align = "center"
+```
+
+- It can be clearly seen that the time taken for the Incomplete Cholesky factorization using the `rcpp_ichol()` function decreases as the size of th matrix; i.e, the number of explanatory variables  increases.
+
+- Therefore this method is more applicable in factorizing the large dense systems.
+
+- Also the time taken in factorizing a matrix using Incomplete Cholesky factorization is less when compared with that factorized used  Cholesky factorization.
+
+```{r}
+microbenchmark::microbenchmark(rcpp_ichol(C),chol(C))
+```
+
+
+
+
+**Speed comparison :: solving for ** $\beta$
+
+\footnotesize
+
+- `backsolve()` and `forwardsolve()` are more efficient as $L^{\prime}$ and $L$ are upper triangular and lower triangular, respectively.
+
+- Example 2
+
+
+```{r echo=TRUE, warning=FALSE}
+set.seed(12345)
+ICr<-t(ichol(C))
+ICrcpp<-t(rcpp_ichol(C))
+ICicc<-t(icc(C))
+
+Csol_r<-backsolve(ICr,forwardsolve(t(ICr),b))
+Csol_rcpp<-backsolve(ICrcpp,forwardsolve(t(ICrcpp),b))
+Csol_icc<-backsolve(ICicc,forwardsolve(t(ICicc),b))
+identical(Csol_r,Csol_rcpp,Csol_icc)
+```
+
+- The solutions for the $\beta$ coefficients obtained using the Incomplete Cholesky factorization method is not exactly the solutions obtained using the Cholesky factorization method as $LL^{\prime}\approx C$. But it is an approximation.
+
+\footnotesize
+
+```{r echo=FALSE, warning=FALSE}
+Csol_icc
+```
+
+- Similarly the twe can solve for $\beta$ in example 3 in example 3 also. But it is an approximation.
+
+**Speed comparison plot:: Solving for ** $\beta$
+
+```{r echo=FALSE, out.width = "100%"}
+knitr::include_graphics("solve.PNG")
+#fig.align = "center"
+```
+
+- The time consumed to solve the system for $\beta$ in both the cases is calculated. 
+- It can be seen that the time taken to solve for $\beta$ using the `rcpp_ichol()` function decreases as the size of the matrix increases. 
+
+
+**Practice question 1**
+
+\small
+- Consider the least squares estimator in linear regression models, $\beta$, which is the solution to the equation, $X^{\prime}X\beta=X^{\prime}y$. Apply the Incomplete cholesky factorization on $X^{\prime}X$, and use `backsolve()` and `forwardsolve()` to recover the approximate least squares estimators of the model,
+
+\footnotesize
+```{R  echo=TRUE}
+data(mpg, package = 'ggplot2')
+fit_mpg <- lm(hwy ~ cty + class+ displ + drv+factor(cyl)+fl, data = mpg)
+```
+
+\small
+- Also compare the computation time in factorizing the matrix $X^{\prime}X$ using Cholesky factorization and Incomplete Cholesky factorization.
+
+
+**Practice question 2**
+
+\small
+- Repeat the pracice question 1 with the model ,
+
+\footnotesize
+```{R  echo=TRUE}
+data(mtcars)
+fit_cars <- lm(mpg~disp+hp+drat+qsec+factor(cyl)+factor(vs)+factor(am)+factor(gear), data = mtcars)
+```
+
+\centering
+# Advantages & disadvantages of Incomplete Cholesky factorization
+
+\flushleft
+
+**Advantages**
+
+- Incomplete Cholesky factorization is very efficient in increasing the convergence rates of basic iterative methods.
+
+- Reduces the complicated addressing and high demands for auxiliary storage.
+
+- This factorization is extremely cheap to compute as it reduces the computational time. 
+
+
+**Disdvantages**
+
+- The product $LL^{\prime}$ is typically very different from A. But the product $LL^{\prime}$  will match A on its pattern up to round-off.
+
+
+
+\centering
+
+# Summary 
+
+\flushleft
+
+- Incomplete Cholesky factorization is a factorization which contains nonzeros only  in the same position as A contains nonzeros. 
+
+- This is an approximation of the Cholesky factorization. 
+
+- `A` should be a Symmetric and Positive Definite matrix.
+
+- Very usefull in solving large dense sytems.
+
+- In-built function to solve Incomplete Cholesky factorization is `cPCG::icc`. A function is written in Rcpp which beats `cPCG::icc` in speed.
+
+
+\centering
+
+# References and contribution report
+
+\flushleft
+
+**References**
+
+- https://cran.r-project.org/web/packages/cPCG/cPCG.pdf
+
+- https://doi.org/10.1137/S1064827597327334
+
+- https://rdrr.io/cran/cPCG/man/cPCG-package.html
+ 
+- https://www.mathworks.com/help/matlab/ref/ichol.html
+
+
+
+## Contribution report
+
+**Hasini**
+
+- Implemented the function in R.
+
+- Prepared practice problems.
+
+
+
+**Sanjaya**
+
+- Implemented the function in Rcpp.
+
+- Prepared practice problems.
+
+\vspace{1cm}
+
+- Both of us prepared the presentation and handout.
+
+
+
+
+
